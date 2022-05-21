@@ -11,5 +11,5 @@ async fn pass() {
 
     assert!(run().await == ());
 
-    // assert!(false);
+    assert!(false);
 }
